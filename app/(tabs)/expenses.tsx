@@ -2,8 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useState } from 'react';
-
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import ReceiptScanner from '../../components/ReceiptScanner';
 
 interface Transaction {
     id: string;
@@ -22,6 +22,7 @@ export default function ExpensesScreen() {
     const [expenseAmount, setExpenseAmount] = useState('');
     const [expenseCategory, setExpenseCategory] = useState('Food');
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+    const [showReceiptScanner, setShowReceiptScanner] = useState(false);
 
     const categories = ['Food', 'Transport', 'Entertainment', 'Health', 'Shopping', 'Bills', 'Others'];
 
@@ -89,6 +90,13 @@ export default function ExpensesScreen() {
         setEditingTransaction(null);
     };
 
+    const handleReceiptScanned = (data: { title: string; amount: string; category: string }) => {
+        setExpenseTitle(data.title);
+        setExpenseAmount(data.amount);
+        setExpenseCategory(data.category);
+        setShowExpenseModal(true);
+    };
+
     const handleEditExpense = (transaction: Transaction) => {
         setEditingTransaction(transaction);
         setExpenseTitle(transaction.title);
@@ -149,12 +157,20 @@ export default function ExpensesScreen() {
                     <Text style={styles.title}>Expenses</Text>
                     <Text style={styles.subtitle}>Track your spending</Text>
                 </View>
-                <TouchableOpacity
-                    style={styles.addButton}
-                    onPress={() => setShowExpenseModal(true)}
-                >
-                    <Ionicons name="add" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
+                <View style={styles.headerButtons}>
+                    <TouchableOpacity
+                        style={styles.scanButton}
+                        onPress={() => setShowReceiptScanner(true)}
+                    >
+                        <Ionicons name="scan" size={20} color="#007AFF" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.addButton}
+                        onPress={() => setShowExpenseModal(true)}
+                    >
+                        <Ionicons name="add" size={20} color="#FFFFFF" />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -349,6 +365,13 @@ export default function ExpensesScreen() {
                     </View>
                 </View>
             </Modal>
+
+            {/* Receipt Scanner Modal */}
+            <ReceiptScanner
+                visible={showReceiptScanner}
+                onClose={() => setShowReceiptScanner(false)}
+                onReceiptScanned={handleReceiptScanned}
+            />
         </View>
     );
 }
@@ -417,6 +440,18 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#8E8E93',
         marginTop: 2,
+    },
+    headerButtons: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    scanButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#F2F2F7',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     addButton: {
         width: 40,

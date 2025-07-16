@@ -21,6 +21,7 @@ export default function HomeScreen() {
     const [expenseAmount, setExpenseAmount] = useState('');
     const [expenseCategory, setExpenseCategory] = useState('Food');
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+    const [showReceiptScanner, setShowReceiptScanner] = useState(false);
 
     const categories = ['Food', 'Transport', 'Entertainment', 'Health', 'Shopping', 'Bills', 'Others'];
 
