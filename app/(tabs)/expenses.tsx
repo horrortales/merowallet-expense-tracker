@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useState } from 'react';
+
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface Transaction {
@@ -13,8 +14,8 @@ interface Transaction {
     type: 'income' | 'expense';
 }
 
-export default function HomeScreen() {
-    const [monthlyIncome, setMonthlyIncome] = useState(0);
+export default function ExpensesScreen() {
+    const [selectedPeriod, setSelectedPeriod] = useState('This Month');
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [showExpenseModal, setShowExpenseModal] = useState(false);
     const [expenseTitle, setExpenseTitle] = useState('');
@@ -25,23 +26,17 @@ export default function HomeScreen() {
     const categories = ['Food', 'Transport', 'Entertainment', 'Health', 'Shopping', 'Bills', 'Others'];
 
     useFocusEffect(() => {
-        loadData();
+        loadTransactions();
     });
 
-    const loadData = async () => {
+    const loadTransactions = async () => {
         try {
-            const storedIncome = await AsyncStorage.getItem('monthlyIncome');
             const storedTransactions = await AsyncStorage.getItem('transactions');
-
-            if (storedIncome) {
-                setMonthlyIncome(parseFloat(storedIncome));
-            }
-
             if (storedTransactions) {
                 setTransactions(JSON.parse(storedTransactions));
             }
         } catch (error) {
-            console.error('Error loading data:', error);
+            console.error('Error loading transactions:', error);
         }
     };
 
@@ -126,132 +121,149 @@ export default function HomeScreen() {
         return `रु ${amount.toLocaleString('en-NP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
-    const calculateBalance = () => {
-        const totalExpenses = transactions
+    const getCategoryTotals = () => {
+        const totals: { [key: string]: number } = {};
+        transactions
+            .filter(t => t.type === 'expense')
+            .forEach(transaction => {
+                totals[transaction.category] = (totals[transaction.category] || 0) + transaction.amount;
+            });
+        return totals;
+    };
+
+    const getTotalExpenses = () => {
+        return transactions
             .filter(t => t.type === 'expense')
             .reduce((sum, t) => sum + t.amount, 0);
-        return monthlyIncome - totalExpenses;
     };
 
-    const getTodayExpenses = () => {
-        const today = new Date().toISOString().split('T')[0];
-        return transactions
-            .filter(t => t.type === 'expense' && t.date === today)
-            .reduce((sum, t) => sum + t.amount, 0);
-    };
-
-    const getThisMonthExpenses = () => {
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
-        return transactions
-            .filter(t => {
-                const transactionDate = new Date(t.date);
-                return t.type === 'expense' &&
-                    transactionDate.getMonth() === currentMonth &&
-                    transactionDate.getFullYear() === currentYear;
-            })
-            .reduce((sum, t) => sum + t.amount, 0);
-    };
-
-    const recentTransactions = transactions.slice(0, 4);
+    const categoryTotals = getCategoryTotals();
+    const totalExpenses = getTotalExpenses();
+    const expenseTransactions = transactions.filter(t => t.type === 'expense');
 
     return (
         <View style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
                 <View>
-                    <Text style={styles.greeting}>Hello</Text>
-                    <Text style={styles.subGreeting}>Welcome back</Text>
+                    <Text style={styles.title}>Expenses</Text>
+                    <Text style={styles.subtitle}>Track your spending</Text>
                 </View>
-                <TouchableOpacity style={styles.notificationButton}>
-                    <Ionicons name="notifications-outline" size={22} color="#1C1C1E" />
+                <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={() => setShowExpenseModal(true)}
+                >
+                    <Ionicons name="add" size={20} color="#FFFFFF" />
                 </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-                {/* Balance Overview */}
-                <View style={styles.balanceSection}>
-                    <Text style={styles.balanceLabel}>Available Balance</Text>
-                    <Text style={styles.balanceAmount}>{formatCurrency(calculateBalance())}</Text>
+                {/* Total Expenses Overview */}
+                <View style={styles.overviewSection}>
+                    <Text style={styles.overviewLabel}>Total Expenses</Text>
+                    <Text style={styles.overviewAmount}>{formatCurrency(totalExpenses)}</Text>
+                    <Text style={styles.overviewPeriod}>{selectedPeriod}</Text>
                 </View>
 
-                {/* Quick Stats */}
-                <View style={styles.statsContainer}>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statLabel}>Today</Text>
-                        <Text style={styles.statAmount}>{formatCurrency(getTodayExpenses())}</Text>
+                {/* Period Selector */}
+                <View style={styles.periodContainer}>
+                    <View style={styles.periodSelector}>
+                        {['This Week', 'This Month', 'This Year'].map((period) => (
+                            <TouchableOpacity
+                                key={period}
+                                style={[
+                                    styles.periodButton,
+                                    selectedPeriod === period && styles.selectedPeriodButton
+                                ]}
+                                onPress={() => setSelectedPeriod(period)}
+                            >
+                                <Text style={[
+                                    styles.periodText,
+                                    selectedPeriod === period && styles.selectedPeriodText
+                                ]}>
+                                    {period}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
                     </View>
-                    <View style={styles.statCard}>
-                        <Text style={styles.statLabel}>This Month</Text>
-                        <Text style={styles.statAmount}>{formatCurrency(getThisMonthExpenses())}</Text>
+                </View>
+
+                {/* Categories Section */}
+                {Object.keys(categoryTotals).length > 0 && (
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Categories</Text>
+                        <View style={styles.categoriesList}>
+                            {Object.entries(categoryTotals)
+                                .sort(([, a], [, b]) => b - a)
+                                .map(([category, amount], index) => (
+                                    <View key={category} style={[
+                                        styles.categoryItem,
+                                        index === Object.entries(categoryTotals).length - 1 && styles.lastCategoryItem
+                                    ]}>
+                                        <View style={styles.categoryLeft}>
+                                            <View style={[styles.categoryIcon, { backgroundColor: getCategoryColor(category) }]}>
+                                                <Ionicons name={getCategoryIcon(category)} size={18} color="#FFFFFF" />
+                                            </View>
+                                            <Text style={styles.categoryName}>{category}</Text>
+                                        </View>
+                                        <View style={styles.categoryRight}>
+                                            <Text style={styles.categoryAmount}>{formatCurrency(amount)}</Text>
+                                            <Text style={styles.categoryPercentage}>
+                                                {((amount / totalExpenses) * 100).toFixed(0)}%
+                                            </Text>
+                                        </View>
+                                    </View>
+                                ))}
+                        </View>
                     </View>
-                </View>
+                )}
 
-                {/* Quick Actions */}
-                <View style={styles.actionsContainer}>
-                    <TouchableOpacity
-                        style={styles.primaryAction}
-                        onPress={() => setShowExpenseModal(true)}
-                    >
-                        <Ionicons name="add" size={20} color="#FFFFFF" />
-                        <Text style={styles.primaryActionText}>Add Expense</Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Recent Transactions */}
-                <View style={styles.transactionsSection}>
+                {/* Recent Expenses */}
+                <View style={styles.section}>
                     <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Recent Activity</Text>
-                        {transactions.length > 4 && (
+                        <Text style={styles.sectionTitle}>Recent Expenses</Text>
+                        {expenseTransactions.length > 8 && (
                             <TouchableOpacity>
                                 <Text style={styles.seeAllText}>See All</Text>
                             </TouchableOpacity>
                         )}
                     </View>
 
-                    {recentTransactions.length === 0 ? (
+                    {expenseTransactions.length === 0 ? (
                         <View style={styles.emptyState}>
                             <View style={styles.emptyIcon}>
                                 <Ionicons name="receipt-outline" size={32} color="#8E8E93" />
                             </View>
-                            <Text style={styles.emptyText}>No transactions yet</Text>
-                            <Text style={styles.emptySubtext}>Start tracking your expenses</Text>
+                            <Text style={styles.emptyText}>No expenses yet</Text>
+                            <Text style={styles.emptySubtext}>Tap the + button to add your first expense</Text>
                         </View>
                     ) : (
-                        <View style={styles.transactionsList}>
-                            {recentTransactions.map((transaction, index) => (
+                        <View style={styles.expensesList}>
+                            {expenseTransactions.slice(0, 8).map((expense, index) => (
                                 <TouchableOpacity
-                                    key={transaction.id}
+                                    key={expense.id}
                                     style={[
-                                        styles.transactionItem,
-                                        index === recentTransactions.length - 1 && styles.lastTransactionItem
+                                        styles.expenseItem,
+                                        index === Math.min(expenseTransactions.length, 8) - 1 && styles.lastExpenseItem
                                     ]}
-                                    onLongPress={() => handleEditExpense(transaction)}
+                                    onLongPress={() => handleEditExpense(expense)}
                                     activeOpacity={0.7}
                                 >
-                                    <View style={styles.transactionIcon}>
-                                        <Ionicons
-                                            name={getCategoryIcon(transaction.category)}
-                                            size={18}
-                                            color="#007AFF"
-                                        />
+                                    <View style={styles.expenseIcon}>
+                                        <Ionicons name={getCategoryIcon(expense.category)} size={18} color="#007AFF" />
                                     </View>
-                                    <View style={styles.transactionDetails}>
-                                        <Text style={styles.transactionTitle}>{transaction.title}</Text>
-                                        <Text style={styles.transactionCategory}>{transaction.category}</Text>
+                                    <View style={styles.expenseDetails}>
+                                        <Text style={styles.expenseTitle}>{expense.title}</Text>
+                                        <Text style={styles.expenseCategory}>{expense.category}</Text>
                                     </View>
-                                    <View style={styles.transactionRight}>
-                                        <View style={styles.transactionAmountContainer}>
-                                            <Text style={styles.transactionAmount}>
-                                                -{formatCurrency(transaction.amount)}
-                                            </Text>
-                                            <Text style={styles.transactionDate}>
-                                                {formatDate(transaction.date)}
-                                            </Text>
+                                    <View style={styles.expenseRight}>
+                                        <View style={styles.expenseAmountContainer}>
+                                            <Text style={styles.expenseAmount}>{formatCurrency(expense.amount)}</Text>
+                                            <Text style={styles.expenseDate}>{formatDate(expense.date)}</Text>
                                         </View>
                                         <TouchableOpacity
                                             style={styles.deleteButton}
-                                            onPress={() => handleDeleteExpense(transaction.id)}
+                                            onPress={() => handleDeleteExpense(expense.id)}
                                         >
                                             <Ionicons name="trash" size={16} color="#FF3B30" />
                                         </TouchableOpacity>
@@ -329,16 +341,29 @@ export default function HomeScreen() {
                         </View>
 
                         <TouchableOpacity
-                            style={styles.addButton}
+                            style={styles.saveButton}
                             onPress={handleAddExpense}
                         >
-                            <Text style={styles.addButtonText}>Add Expense</Text>
+                            <Text style={styles.saveButtonText}>Add Expense</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
             </Modal>
         </View>
     );
+}
+
+function getCategoryColor(category: string): string {
+    const colors: { [key: string]: string } = {
+        Food: '#FF9500',
+        Transport: '#007AFF',
+        Entertainment: '#AF52DE',
+        Health: '#34C759',
+        Shopping: '#FF3B30',
+        Bills: '#5856D6',
+        Others: '#8E8E93',
+    };
+    return colors[category] || '#8E8E93';
 }
 
 function getCategoryIcon(category: string): keyof typeof Ionicons.glyphMap {
@@ -382,83 +407,81 @@ const styles = StyleSheet.create({
         paddingTop: 60,
         paddingBottom: 32,
     },
-    greeting: {
+    title: {
         fontSize: 28,
         fontWeight: '700',
         color: '#1C1C1E',
         letterSpacing: -0.5,
     },
-    subGreeting: {
+    subtitle: {
         fontSize: 16,
         color: '#8E8E93',
         marginTop: 2,
     },
-    notificationButton: {
+    addButton: {
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: '#F2F2F7',
+        backgroundColor: '#007AFF',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    balanceSection: {
+    overviewSection: {
         paddingHorizontal: 24,
         marginBottom: 32,
     },
-    balanceLabel: {
+    overviewLabel: {
         fontSize: 16,
         color: '#8E8E93',
         marginBottom: 8,
     },
-    balanceAmount: {
+    overviewAmount: {
         fontSize: 36,
         fontWeight: '700',
-        color: '#1C1C1E',
+        color: '#FF3B30',
         letterSpacing: -1,
+        marginBottom: 4,
     },
-    statsContainer: {
-        flexDirection: 'row',
+    overviewPeriod: {
+        fontSize: 16,
+        color: '#8E8E93',
+    },
+    periodContainer: {
         paddingHorizontal: 24,
         marginBottom: 32,
-        gap: 16,
     },
-    statCard: {
-        flex: 1,
+    periodSelector: {
+        flexDirection: 'row',
         backgroundColor: '#F8F9FA',
-        padding: 20,
-        borderRadius: 16,
+        borderRadius: 12,
+        padding: 4,
     },
-    statLabel: {
+    periodButton: {
+        flex: 1,
+        paddingVertical: 8,
+        alignItems: 'center',
+        borderRadius: 8,
+    },
+    selectedPeriodButton: {
+        backgroundColor: '#FFFFFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    periodText: {
         fontSize: 14,
         color: '#8E8E93',
-        marginBottom: 8,
+        fontWeight: '500',
     },
-    statAmount: {
-        fontSize: 20,
-        fontWeight: '600',
+    selectedPeriodText: {
         color: '#1C1C1E',
+        fontWeight: '600',
     },
-    actionsContainer: {
+    section: {
         paddingHorizontal: 24,
         marginBottom: 32,
-    },
-    primaryAction: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: '#007AFF',
-        paddingVertical: 16,
-        borderRadius: 16,
-        gap: 8,
-    },
-    primaryActionText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#FFFFFF',
-    },
-    transactionsSection: {
-        paddingHorizontal: 24,
-        paddingBottom: 32,
     },
     sectionHeader: {
         flexDirection: 'row',
@@ -475,6 +498,117 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#007AFF',
         fontWeight: '500',
+    },
+    categoriesList: {
+        backgroundColor: '#F8F9FA',
+        borderRadius: 16,
+        padding: 4,
+    },
+    categoryItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: 16,
+        backgroundColor: '#FFFFFF',
+        marginBottom: 2,
+        borderRadius: 12,
+    },
+    lastCategoryItem: {
+        marginBottom: 0,
+    },
+    categoryLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    categoryIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    categoryName: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#1C1C1E',
+    },
+    categoryRight: {
+        alignItems: 'flex-end',
+    },
+    categoryAmount: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1C1C1E',
+        marginBottom: 2,
+    },
+    categoryPercentage: {
+        fontSize: 14,
+        color: '#8E8E93',
+    },
+    expensesList: {
+        backgroundColor: '#F8F9FA',
+        borderRadius: 16,
+        padding: 4,
+    },
+    expenseItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        backgroundColor: '#FFFFFF',
+        marginBottom: 2,
+        borderRadius: 12,
+    },
+    lastExpenseItem: {
+        marginBottom: 0,
+    },
+    expenseIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#F2F2F7',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    expenseDetails: {
+        flex: 1,
+    },
+    expenseTitle: {
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#1C1C1E',
+        marginBottom: 2,
+    },
+    expenseCategory: {
+        fontSize: 14,
+        color: '#8E8E93',
+    },
+    expenseRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    expenseAmountContainer: {
+        alignItems: 'flex-end',
+    },
+    expenseAmount: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#FF3B30',
+        marginBottom: 2,
+    },
+    expenseDate: {
+        fontSize: 14,
+        color: '#8E8E93',
+    },
+    deleteButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#F2F2F7',
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     emptyState: {
         alignItems: 'center',
@@ -498,71 +632,6 @@ const styles = StyleSheet.create({
     emptySubtext: {
         fontSize: 16,
         color: '#8E8E93',
-    },
-    transactionsList: {
-        backgroundColor: '#F8F9FA',
-        borderRadius: 16,
-        padding: 4,
-    },
-    transactionItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: 16,
-        backgroundColor: '#FFFFFF',
-        marginBottom: 2,
-        borderRadius: 12,
-    },
-    lastTransactionItem: {
-        marginBottom: 0,
-    },
-    transactionIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#F2F2F7',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    transactionDetails: {
-        flex: 1,
-    },
-    transactionTitle: {
-        fontSize: 16,
-        fontWeight: '500',
-        color: '#1C1C1E',
-        marginBottom: 2,
-    },
-    transactionCategory: {
-        fontSize: 14,
-        color: '#8E8E93',
-    },
-    transactionRight: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-    },
-    transactionAmountContainer: {
-        alignItems: 'flex-end',
-    },
-    transactionAmount: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#FF3B30',
-        marginBottom: 2,
-    },
-    transactionDate: {
-        fontSize: 14,
-        color: '#8E8E93',
-    },
-
-    deleteButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: '#F2F2F7',
-        justifyContent: 'center',
-        alignItems: 'center',
     },
     modalOverlay: {
         flex: 1,
@@ -626,13 +695,13 @@ const styles = StyleSheet.create({
     selectedCategoryChipText: {
         color: '#FFFFFF',
     },
-    addButton: {
+    saveButton: {
         backgroundColor: '#007AFF',
         paddingVertical: 16,
         borderRadius: 12,
         alignItems: 'center',
     },
-    addButtonText: {
+    saveButtonText: {
         fontSize: 16,
         fontWeight: '600',
         color: '#FFFFFF',
