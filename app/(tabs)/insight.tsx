@@ -1,47 +1,32 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
 import React, { useState } from 'react';
 
 import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import AuthScreen from '../../components/AuthScreen';
+import { useAuth } from '../../contexts/AuthContext';
+import { Transaction, useSupabaseData } from '../../hooks/useSupabaseData';
 
 const { width } = Dimensions.get('window');
 
-interface Transaction {
-    id: string;
-    title: string;
-    amount: number;
-    date: string;
-    category: string;
-    type: 'income' | 'expense';
-}
 
 export default function InsightScreen() {
+    const { user, loading: authLoading } = useAuth();
+    const { transactions, monthlyIncome, loading } = useSupabaseData();
+    
     const [selectedPeriod, setSelectedPeriod] = useState('This Month');
-    const [monthlyIncome, setMonthlyIncome] = useState(0);
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-    useFocusEffect(() => {
-        loadData();
-    });
+    // Show auth screen if user is not authenticated
+    if (authLoading) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <Text>Loading...</Text>
+            </View>
+        );
+    }
 
-    const loadData = async () => {
-        try {
-            const storedIncome = await AsyncStorage.getItem('monthlyIncome');
-            const storedTransactions = await AsyncStorage.getItem('transactions');
-
-            if (storedIncome) {
-                setMonthlyIncome(parseFloat(storedIncome));
-            }
-
-            if (storedTransactions) {
-                setTransactions(JSON.parse(storedTransactions));
-            }
-        } catch (error) {
-            console.error('Error loading data:', error);
-        }
-    };
-
+    if (!user) {
+        return <AuthScreen />;
+    }
     const formatCurrency = (amount: number) => {
         return `रु ${amount.toLocaleString('en-NP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };

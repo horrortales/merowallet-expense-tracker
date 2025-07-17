@@ -1,60 +1,42 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
 import React, { useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-
-interface Transaction {
-    id: string;
-    title: string;
-    amount: number;
-    date: string;
-    category: string;
-    type: 'income' | 'expense';
-}
+import AuthScreen from '../../components/AuthScreen';
+import { useAuth } from '../../contexts/AuthContext';
+import { Transaction, useSupabaseData } from '../../hooks/useSupabaseData';
 
 export default function HomeScreen() {
-    const [monthlyIncome, setMonthlyIncome] = useState(0);
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const { user, loading: authLoading } = useAuth();
+    const { 
+        transactions, 
+        monthlyIncome, 
+        loading, 
+        addTransaction, 
+        updateTransaction, 
+        deleteTransaction 
+    } = useSupabaseData();
+    
     const [showExpenseModal, setShowExpenseModal] = useState(false);
     const [expenseTitle, setExpenseTitle] = useState('');
     const [expenseAmount, setExpenseAmount] = useState('');
     const [expenseCategory, setExpenseCategory] = useState('Food');
     const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
-    const [showReceiptScanner, setShowReceiptScanner] = useState(false);
 
     const categories = ['Food', 'Transport', 'Entertainment', 'Health', 'Shopping', 'Bills', 'Others'];
 
-    useFocusEffect(() => {
-        loadData();
-    });
+    // Show auth screen if user is not authenticated
+    if (authLoading) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <Text>Loading...</Text>
+            </View>
+        );
+    }
 
-    const loadData = async () => {
-        try {
-            const storedIncome = await AsyncStorage.getItem('monthlyIncome');
-            const storedTransactions = await AsyncStorage.getItem('transactions');
-
-            if (storedIncome) {
-                setMonthlyIncome(parseFloat(storedIncome));
-            }
-
-            if (storedTransactions) {
-                setTransactions(JSON.parse(storedTransactions));
-            }
-        } catch (error) {
-            console.error('Error loading data:', error);
-        }
-    };
-
-    const saveTransactions = async (newTransactions: Transaction[]) => {
-        try {
-            await AsyncStorage.setItem('transactions', JSON.stringify(newTransactions));
-        } catch (error) {
-            console.error('Error saving transactions:', error);
-        }
-    };
-
-    const handleAddExpense = () => {
+    if (!user) {
+        return <AuthScreen />;
+    }
+    const handleAddExpense = async () => {
         const amount = parseFloat(expenseAmount);
         if (!expenseTitle.trim() || isNaN(amount) || amount <= 0) {
             Alert.alert('Invalid Input', 'Please enter valid expense details');
@@ -63,18 +45,20 @@ export default function HomeScreen() {
 
         if (editingTransaction) {
             // Edit existing transaction
-            const updatedTransactions = transactions.map(t =>
-                t.id === editingTransaction.id
-                    ? { ...t, title: expenseTitle.trim(), amount: amount, category: expenseCategory }
-                    : t
-            );
-            setTransactions(updatedTransactions);
-            saveTransactions(updatedTransactions);
+            const { error } = await updateTransaction(editingTransaction.id, {
+                title: expenseTitle.trim(),
+                amount: amount,
+                category: expenseCategory
+            });
+            
+            if (error) {
+                Alert.alert('Error', 'Failed to update expense');
+                return;
+            }
             Alert.alert('Success', 'Expense updated successfully!');
         } else {
             // Add new transaction
-            const newTransaction: Transaction = {
-                id: Date.now().toString(),
+            const newTransaction = {
                 title: expenseTitle.trim(),
                 amount: amount,
                 date: new Date().toISOString().split('T')[0],
@@ -82,9 +66,12 @@ export default function HomeScreen() {
                 type: 'expense'
             };
 
-            const updatedTransactions = [newTransaction, ...transactions];
-            setTransactions(updatedTransactions);
-            saveTransactions(updatedTransactions);
+            const { error } = await addTransaction(newTransaction);
+            
+            if (error) {
+                Alert.alert('Error', 'Failed to add expense');
+                return;
+            }
             Alert.alert('Success', 'Expense added successfully!');
         }
 
@@ -103,7 +90,7 @@ export default function HomeScreen() {
         setShowExpenseModal(true);
     };
 
-    const handleDeleteExpense = (transactionId: string) => {
+    const handleDeleteExpense = async (transactionId: string) => {
         Alert.alert(
             'Delete Expense',
             'Are you sure you want to delete this expense?',
@@ -112,11 +99,13 @@ export default function HomeScreen() {
                 {
                     text: 'Delete',
                     style: 'destructive',
-                    onPress: () => {
-                        const updatedTransactions = transactions.filter(t => t.id !== transactionId);
-                        setTransactions(updatedTransactions);
-                        saveTransactions(updatedTransactions);
-                        Alert.alert('Success', 'Expense deleted successfully!');
+                    onPress: async () => {
+                        const { error } = await deleteTransaction(transactionId);
+                        if (error) {
+                            Alert.alert('Error', 'Failed to delete expense');
+                        } else {
+                            Alert.alert('Success', 'Expense deleted successfully!');
+                        }
                     }
                 }
             ]
@@ -333,7 +322,9 @@ export default function HomeScreen() {
                             style={styles.addButton}
                             onPress={handleAddExpense}
                         >
-                            <Text style={styles.addButtonText}>Add Expense</Text>
+                            <Text style={styles.addButtonText}>
+                                {editingTransaction ? 'Update Expense' : 'Add Expense'}
+                            </Text>
                         </TouchableOpacity>
                     </View>
                 </View>

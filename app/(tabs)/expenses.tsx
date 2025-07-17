@@ -1,22 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
 import React, { useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import AuthScreen from '../../components/AuthScreen';
 import ReceiptScanner from '../../components/ReceiptScanner';
-
-interface Transaction {
-    id: string;
-    title: string;
-    amount: number;
-    date: string;
-    category: string;
-    type: 'income' | 'expense';
-}
+import { useAuth } from '../../contexts/AuthContext';
+import { Transaction, useSupabaseData } from '../../hooks/useSupabaseData';
 
 export default function ExpensesScreen() {
+    const { user, loading: authLoading } = useAuth();
+    const { 
+        transactions, 
+        loading, 
+        addTransaction, 
+        updateTransaction, 
+        deleteTransaction 
+    } = useSupabaseData();
+    
     const [selectedPeriod, setSelectedPeriod] = useState('This Month');
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [showExpenseModal, setShowExpenseModal] = useState(false);
     const [expenseTitle, setExpenseTitle] = useState('');
     const [expenseAmount, setExpenseAmount] = useState('');
@@ -26,30 +26,19 @@ export default function ExpensesScreen() {
 
     const categories = ['Food', 'Transport', 'Entertainment', 'Health', 'Shopping', 'Bills', 'Others'];
 
-    useFocusEffect(() => {
-        loadTransactions();
-    });
+    // Show auth screen if user is not authenticated
+    if (authLoading) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <Text>Loading...</Text>
+            </View>
+        );
+    }
 
-    const loadTransactions = async () => {
-        try {
-            const storedTransactions = await AsyncStorage.getItem('transactions');
-            if (storedTransactions) {
-                setTransactions(JSON.parse(storedTransactions));
-            }
-        } catch (error) {
-            console.error('Error loading transactions:', error);
-        }
-    };
-
-    const saveTransactions = async (newTransactions: Transaction[]) => {
-        try {
-            await AsyncStorage.setItem('transactions', JSON.stringify(newTransactions));
-        } catch (error) {
-            console.error('Error saving transactions:', error);
-        }
-    };
-
-    const handleAddExpense = () => {
+    if (!user) {
+        return <AuthScreen />;
+    }
+    const handleAddExpense = async () => {
         const amount = parseFloat(expenseAmount);
         if (!expenseTitle.trim() || isNaN(amount) || amount <= 0) {
             Alert.alert('Invalid Input', 'Please enter valid expense details');
@@ -58,18 +47,20 @@ export default function ExpensesScreen() {
 
         if (editingTransaction) {
             // Edit existing transaction
-            const updatedTransactions = transactions.map(t =>
-                t.id === editingTransaction.id
-                    ? { ...t, title: expenseTitle.trim(), amount: amount, category: expenseCategory }
-                    : t
-            );
-            setTransactions(updatedTransactions);
-            saveTransactions(updatedTransactions);
+            const { error } = await updateTransaction(editingTransaction.id, {
+                title: expenseTitle.trim(),
+                amount: amount,
+                category: expenseCategory
+            });
+            
+            if (error) {
+                Alert.alert('Error', 'Failed to update expense');
+                return;
+            }
             Alert.alert('Success', 'Expense updated successfully!');
         } else {
             // Add new transaction
-            const newTransaction: Transaction = {
-                id: Date.now().toString(),
+            const newTransaction = {
                 title: expenseTitle.trim(),
                 amount: amount,
                 date: new Date().toISOString().split('T')[0],
@@ -77,9 +68,12 @@ export default function ExpensesScreen() {
                 type: 'expense'
             };
 
-            const updatedTransactions = [newTransaction, ...transactions];
-            setTransactions(updatedTransactions);
-            saveTransactions(updatedTransactions);
+            const { error } = await addTransaction(newTransaction);
+            
+            if (error) {
+                Alert.alert('Error', 'Failed to add expense');
+                return;
+            }
             Alert.alert('Success', 'Expense added successfully!');
         }
 
@@ -105,7 +99,7 @@ export default function ExpensesScreen() {
         setShowExpenseModal(true);
     };
 
-    const handleDeleteExpense = (transactionId: string) => {
+    const handleDeleteExpense = async (transactionId: string) => {
         Alert.alert(
             'Delete Expense',
             'Are you sure you want to delete this expense?',
@@ -114,11 +108,13 @@ export default function ExpensesScreen() {
                 {
                     text: 'Delete',
                     style: 'destructive',
-                    onPress: () => {
-                        const updatedTransactions = transactions.filter(t => t.id !== transactionId);
-                        setTransactions(updatedTransactions);
-                        saveTransactions(updatedTransactions);
-                        Alert.alert('Success', 'Expense deleted successfully!');
+                    onPress: async () => {
+                        const { error } = await deleteTransaction(transactionId);
+                        if (error) {
+                            Alert.alert('Error', 'Failed to delete expense');
+                        } else {
+                            Alert.alert('Success', 'Expense deleted successfully!');
+                        }
                     }
                 }
             ]
@@ -360,7 +356,9 @@ export default function ExpensesScreen() {
                             style={styles.saveButton}
                             onPress={handleAddExpense}
                         >
-                            <Text style={styles.saveButtonText}>Add Expense</Text>
+                            <Text style={styles.saveButtonText}>
+                                {editingTransaction ? 'Update Expense' : 'Add Expense'}
+                            </Text>
                         </TouchableOpacity>
                     </View>
                 </View>

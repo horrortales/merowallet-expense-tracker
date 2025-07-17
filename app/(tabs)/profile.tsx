@@ -1,57 +1,66 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Alert, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import AuthScreen from '../../components/AuthScreen';
+import { useAuth } from '../../contexts/AuthContext';
+import { useSupabaseData } from '../../hooks/useSupabaseData';
 
 export default function ProfileScreen() {
-    const [monthlyIncome, setMonthlyIncome] = useState(0);
+    const { user, signOut, loading: authLoading } = useAuth();
+    const { monthlyIncome, saveMonthlyIncome } = useSupabaseData();
+    
     const [showIncomeModal, setShowIncomeModal] = useState(false);
     const [tempIncome, setTempIncome] = useState('');
 
-    const mockUser = {
-        name: 'John Doe',
-        email: 'john.doe@example.com',
-        phone: '+977 98XXXXXXXX',
-        memberSince: 'January 2025',
-        avatar: null,
-    };
+    // Show auth screen if user is not authenticated
+    if (authLoading) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <Text>Loading...</Text>
+            </View>
+        );
+    }
 
-    useEffect(() => {
-        loadIncome();
-    }, []);
-
-    const loadIncome = async () => {
-        try {
-            const storedIncome = await AsyncStorage.getItem('monthlyIncome');
-            if (storedIncome) {
-                setMonthlyIncome(parseFloat(storedIncome));
-            }
-        } catch (error) {
-            console.error('Error loading income:', error);
-        }
-    };
-
-    const saveIncome = async (income: number) => {
-        try {
-            await AsyncStorage.setItem('monthlyIncome', income.toString());
-        } catch (error) {
-            console.error('Error saving income:', error);
-        }
-    };
-
-    const handleSaveIncome = () => {
+    if (!user) {
+        return <AuthScreen />;
+    }
+    const handleSaveIncome = async () => {
         const income = parseFloat(tempIncome);
         if (isNaN(income) || income <= 0) {
             Alert.alert('Invalid Amount', 'Please enter a valid income amount');
             return;
         }
-        setMonthlyIncome(income);
-        saveIncome(income);
+        
+        const { error } = await saveMonthlyIncome(income);
+        if (error) {
+            Alert.alert('Error', 'Failed to save income');
+            return;
+        }
+        
         setShowIncomeModal(false);
         setTempIncome('');
         Alert.alert('Success', 'Monthly income updated successfully!');
     };
 
+    const handleSignOut = async () => {
+        Alert.alert(
+            'Sign Out',
+            'Are you sure you want to sign out?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Sign Out',
+                    style: 'destructive',
+                    onPress: async () => {
+                        const { error } = await signOut();
+                        if (error) {
+                            Alert.alert('Error', 'Failed to sign out');
+                        }
+                    }
+                }
+            ]
+        );
+    };
     const formatCurrency = (amount: number) => {
         return `रु ${amount.toLocaleString('en-NP', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
@@ -83,20 +92,23 @@ export default function ProfileScreen() {
 
             <View style={styles.profileCard}>
                 <View style={styles.avatarContainer}>
-                    {mockUser.avatar ? (
-                        <Image source={{ uri: mockUser.avatar }} style={styles.avatar} />
-                    ) : (
-                        <View style={styles.avatarPlaceholder}>
-                            <Ionicons name="person" size={40} color="#FFFFFF" />
-                        </View>
-                    )}
+                    <View style={styles.avatarPlaceholder}>
+                        <Ionicons name="person" size={40} color="#FFFFFF" />
+                    </View>
                     <TouchableOpacity style={styles.editAvatarButton}>
                         <Ionicons name="camera" size={16} color="#007AFF" />
                     </TouchableOpacity>
                 </View>
-                <Text style={styles.userName}>{mockUser.name}</Text>
-                <Text style={styles.userEmail}>{mockUser.email}</Text>
-                <Text style={styles.memberSince}>Member since {mockUser.memberSince}</Text>
+                <Text style={styles.userName}>
+                    {user.user_metadata?.full_name || 'User'}
+                </Text>
+                <Text style={styles.userEmail}>{user.email}</Text>
+                <Text style={styles.memberSince}>
+                    Member since {new Date(user.created_at).toLocaleDateString('en-US', { 
+                        month: 'long', 
+                        year: 'numeric' 
+                    })}
+                </Text>
             </View>
 
             {/* Monthly Income Section */}
@@ -171,7 +183,7 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.section}>
-                <TouchableOpacity style={styles.logoutButton}>
+                <TouchableOpacity style={styles.logoutButton} onPress={handleSignOut}>
                     <Ionicons name="log-out-outline" size={20} color="#FF3B30" />
                     <Text style={styles.logoutText}>Sign Out</Text>
                 </TouchableOpacity>
